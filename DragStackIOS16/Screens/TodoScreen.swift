@@ -76,6 +76,10 @@ struct TodoScreen: View {
                 .shadow(color: Color.gray.opacity(0.4), radius: 8, x: 4, y: 4)
                 .opacity(0.95)
             )
+        } accessibilityLabel: { item in
+            "\(item.emoji) \(item.title)"
+        } accessibilityHint: { item in
+            "Todo item. Double tap to edit, or use the rotor to access move and delete actions."
         }
     }
     

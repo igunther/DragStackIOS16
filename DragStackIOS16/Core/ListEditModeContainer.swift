@@ -1,5 +1,10 @@
 import SwiftUI
 
+private enum MoveDirection {
+    case up
+    case down
+}
+
 /// A reusable container that manages a list with full edit capabilities
 /// Handles drag/drop, delete confirmations, and edit operations internally
 /// Works with local copy and notifies parent only when changes are complete
@@ -10,6 +15,8 @@ public struct ListEditModeContainer: View {
     let onItemsChanged: ([Item]) -> Void
     let itemContent: (Item, Bool) -> AnyView
     let dragPreviewContent: ((Item) -> AnyView)?
+    let accessibilityLabel: ((Item) -> String)?
+    let accessibilityHint: ((Item) -> String)?
     
     /// Local working copy of items
     @State private var items: [Item]
@@ -36,7 +43,9 @@ public struct ListEditModeContainer: View {
         onItemEdit: @escaping (Item, @escaping (Item, Item) -> Void) -> Void,
         onItemsChanged: @escaping ([Item]) -> Void,
         @ViewBuilder itemContent: @escaping (Item, Bool) -> some View,
-        dragPreviewContent: ((Item) -> AnyView)? = nil
+        dragPreviewContent: ((Item) -> AnyView)? = nil,
+        accessibilityLabel: ((Item) -> String)? = nil,
+        accessibilityHint: ((Item) -> String)? = nil
     ) {
         self.initialItems = items
         self.actions = actions
@@ -44,6 +53,8 @@ public struct ListEditModeContainer: View {
         self.onItemsChanged = onItemsChanged
         self.itemContent = { item, editing in AnyView(itemContent(item, editing)) }
         self.dragPreviewContent = dragPreviewContent
+        self.accessibilityLabel = accessibilityLabel
+        self.accessibilityHint = accessibilityHint
         self._items = State(initialValue: items)
     }
     
@@ -137,6 +148,48 @@ public struct ListEditModeContainer: View {
                         isTargeted: status
                     )
                 }
+        }
+        // VoiceOver accessibility
+        .accessibilityElement(children: editMode.isEditing ? .ignore : .contain)
+        .if(editMode.isEditing) { view in
+            view
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(accessibilityLabel(for: item))
+                .accessibilityHint(accessibilityHint(for: item))
+                .accessibilityActions {
+                    // Add accessibility actions for available operations
+                    if actions.contains(.delete) {
+                        Button("Delete") {
+                            pendingDelete = item
+                            showDeleteConfirmation = true
+                        }
+                    }
+                    
+                    if actions.contains(.edit) {
+                        Button("Edit") {
+                            onItemEdit(item, updateItem)
+                        }
+                    }
+                    
+                    if actions.contains(.drag) {
+                        Button("Move Up") {
+                            moveItem(
+                                item,
+                                direction: .up
+                            )
+                        }
+                        .disabled(!canMoveUp(item))
+                        
+                        Button("Move Down") {
+                            moveItem(
+                                item,
+                                direction: .down
+                            )
+                        }
+                        .disabled(!canMoveDown(item))
+                    }
+                }
+                .accessibilityAddTraits(.isButton)
         }
     }
     
@@ -248,5 +301,63 @@ public struct ListEditModeContainer: View {
         } else {
             dragTargetItem = nil
         }
+    }
+    
+    // MARK: - Move Functionality
+    
+    private func moveItem(
+        _ item: Item,
+        direction: MoveDirection
+    ) {
+        guard let currentIndex = items.firstIndex(where: { $0.id == item.id }) else {
+            return
+        }
+        
+        let newIndex: Int
+        switch direction {
+        case .up:
+            newIndex = currentIndex - 1
+        case .down:
+            newIndex = currentIndex + 1
+        }
+        
+        guard newIndex >= 0 && newIndex < items.count else {
+            return
+        }
+        
+        withAnimation(.easeInOut) {
+            let movedItem = items.remove(at: currentIndex)
+            items.insert(movedItem, at: newIndex)
+        }
+    }
+    
+    private func canMoveUp(_ item: Item) -> Bool {
+        guard let currentIndex = items.firstIndex(where: { $0.id == item.id }) else {
+            return false
+        }
+        return currentIndex > 0
+    }
+    
+    private func canMoveDown(_ item: Item) -> Bool {
+        guard let currentIndex = items.firstIndex(where: { $0.id == item.id }) else {
+            return false
+        }
+        return currentIndex < items.count - 1
+    }
+    
+    // MARK: - Accessibility Helpers
+    
+    private func accessibilityLabel(for item: Item) -> String {
+        if let accessibilityLabel {
+            return accessibilityLabel(item)
+        }
+        return ""
+    }
+    
+    private func accessibilityHint(for item: Item) -> String {
+        if let accessibilityHint {
+            return accessibilityHint(item)
+        }
+        return ""
     }
 }
